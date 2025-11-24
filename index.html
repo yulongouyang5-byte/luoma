@@ -8,6 +8,7 @@
         body { margin: 0; overflow: hidden; background-color: #0f1215; font-family: "PingFang SC", "Microsoft YaHei", sans-serif; touch-action: none; }
         #canvas-container { width: 100vw; height: 100vh; display: block; }
         
+        /* UI 设计 */
         #ui-layer {
             position: absolute; top: 20px; left: 20px; color: #e0e0e0; pointer-events: none; user-select: none; z-index: 5;
             border-left: 3px solid #d32f2f; padding-left: 15px; text-shadow: 0 2px 4px rgba(0,0,0,0.9);
@@ -142,6 +143,7 @@
         import { UnrealBloomPass } from 'https://cdn.skypack.dev/three@0.132.2/examples/jsm/postprocessing/UnrealBloomPass.js';
         import { FilmPass } from 'https://cdn.skypack.dev/three@0.132.2/examples/jsm/postprocessing/FilmPass.js';
 
+        // --- 变量定义 ---
         let camera, scene, renderer, composer;
         let orbitControls, fpsControls;
         let sun, sky;
@@ -151,17 +153,21 @@
         let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
         const velocity = new THREE.Vector3(); const direction = new THREE.Vector3(); let prevTime = performance.now();
         
+        // 移动端检测
         let isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
         let mobileMove = { x: 0, y: 0 };
         let cameraEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 
+        // --- 性能优化参数 ---
+        // 手机端大幅减少渲染压力
         const SETTINGS = {
-            rainCount: isMobile ? 4000 : 30000,
-            houseCount: isMobile ? 20 : 50,
-            shadowSize: isMobile ? 512 : 2048,
-            pixelRatio: isMobile ? 1 : window.devicePixelRatio
+            rainCount: isMobile ? 4000 : 30000, // 手机端减少粒子
+            houseCount: isMobile ? 20 : 50,     // 手机端减少房子
+            shadowSize: isMobile ? 512 : 2048,  // 手机端降低阴影
+            pixelRatio: isMobile ? 1 : window.devicePixelRatio // 手机不使用视网膜渲染
         };
 
+        // --- 纹理工厂 ---
         const TextureFactory = {
             createNoiseCanvas: function(width, height, scale = 1.0, intensity = 255) {
                 const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
@@ -170,7 +176,8 @@
                 ctx.putImageData(imgData, 0, 0); return canvas;
             },
             createCobblestone: function() {
-                const size = 512; const canvasColor = document.createElement('canvas'); const canvasNormal = document.createElement('canvas');
+                const size = 512; // 优化纹理尺寸
+                const canvasColor = document.createElement('canvas'); const canvasNormal = document.createElement('canvas');
                 canvasColor.width = canvasNormal.width = size; canvasColor.height = canvasNormal.height = size;
                 const ctxC = canvasColor.getContext('2d'); const ctxN = canvasNormal.getContext('2d');
                 ctxC.fillStyle = '#1a1510'; ctxC.fillRect(0, 0, size, size); ctxN.fillStyle = '#8080ff'; ctxN.fillRect(0, 0, size, size);
@@ -228,6 +235,7 @@
             const renderScene = new RenderPass(scene, camera);
             const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
             bloomPass.threshold = 0.7; bloomPass.strength = 0.4; bloomPass.radius = 0.5;
+            
             composer = new EffectComposer(renderer); composer.addPass(renderScene); composer.addPass(bloomPass);
             if (!isMobile) {
                 const filmPass = new FilmPass(0.25, 0.05, 648, false);
@@ -262,7 +270,8 @@
             uniforms['sunPosition'].value.copy(sun);
             const dirLight = new THREE.DirectionalLight(0x8899aa, 1.0); dirLight.position.set(50, 100, 50); dirLight.castShadow = true;
             dirLight.shadow.mapSize.width = SETTINGS.shadowSize; dirLight.shadow.mapSize.height = SETTINGS.shadowSize; dirLight.shadow.bias = -0.0005;
-            const d = 100; dirLight.shadow.camera.left = -d; dirLight.shadow.camera.right = d; dirLight.shadow.camera.top = d; dirLight.shadow.camera.bottom = -d; scene.add(dirLight);
+            const d = 100; 
+            dirLight.shadow.camera.left = -d; dirLight.shadow.camera.right = d; dirLight.shadow.camera.top = d; dirLight.shadow.camera.bottom = -d; scene.add(dirLight);
             const ambientLight = new THREE.AmbientLight(0x506070, 2.0); scene.add(ambientLight);
         }
         function createRealisticGround(mats) {
