@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>极境罗马 - 怪物图鉴</title>
+    <title>极境罗马 - 终极优化版</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #0f1215; font-family: "PingFang SC", "Microsoft YaHei", sans-serif; touch-action: none; }
         #canvas-container { width: 100vw; height: 100vh; display: block; }
         
+        /* UI 设计 */
         #ui-layer {
             position: absolute; top: 20px; left: 20px; color: #e0e0e0; pointer-events: none; user-select: none; z-index: 5;
             border-left: 3px solid #d32f2f; padding-left: 15px; text-shadow: 0 2px 4px rgba(0,0,0,0.9);
@@ -38,7 +39,6 @@
         }
         .btn:hover { background: #455a64; color: #fff; border-color: #90a4ae; }
 
-        /* 遮罩层 */
         #blocker {
             position: absolute; width: 100%; height: 100%; background-color: rgba(0,0,0,0.85);
             backdrop-filter: blur(10px); display: none; z-index: 999; justify-content: center;
@@ -55,28 +55,31 @@
             z-index: 20; transition: opacity 0.5s;
         }
 
-        /* 手机控件 */
+        /* 手机控件优化 */
         #mobile-controls {
             position: absolute; bottom: 20px; width: 100%; height: 150px; display: none; z-index: 20; pointer-events: none;
         }
         .joystick-area {
             position: absolute; bottom: 20px; width: 120px; height: 120px;
-            background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 50%; pointer-events: auto;
         }
         #stick-left { left: 30px; }
-        #touch-right { right: 30px; border: none; background: rgba(0,0,0,0.1); }
+        #touch-right { right: 30px; border: none; background: rgba(0,0,0,0.05); }
         
         .stick-knob {
             position: absolute; top: 50%; left: 50%; width: 50px; height: 50px;
-            background: rgba(255, 255, 255, 0.5); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none;
+            background: rgba(255, 255, 255, 0.3); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none;
         }
         
+        /* 优化后的交互按钮：使用手掌图标，颜色更温和 */
         .interact-btn-mobile {
-            position: absolute; bottom: 160px; right: 40px; width: 60px; height: 60px; border-radius: 50%;
-            background: rgba(255, 170, 0, 0.6); border: 2px solid #fff; color: white; font-size: 24px; font-weight: bold;
+            position: absolute; bottom: 160px; right: 40px; width: 64px; height: 64px; border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2); border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white; font-size: 30px;
             display: none; justify-content: center; align-items: center; pointer-events: auto; z-index: 21;
-            box-shadow: 0 0 10px rgba(255, 170, 0, 0.5);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+            transition: background 0.3s, transform 0.1s;
         }
     </style>
 </head>
@@ -92,7 +95,7 @@
     <div id="crosshair"></div>
     <div id="interact-tip">按 [E] 或点击按钮开门</div>
 
-    <div id="loading">正在生成魔物与巢穴...</div>
+    <div id="loading">正在优化性能并生成世界...</div>
 
     <div id="ui-layer">
         <h1>暗黑罗马</h1>
@@ -110,7 +113,8 @@
         <div id="stick-left" class="joystick-area"><div class="stick-knob" id="knob-left"></div></div>
         <div id="touch-right" class="joystick-area" style="width: 40%; height: 60%; bottom: 20%; right: 0; border-radius: 0;"></div>
     </div>
-    <div id="mobile-interact-btn" class="interact-btn-mobile">!</div>
+    <!-- 改为手掌图标 -->
+    <div id="mobile-interact-btn" class="interact-btn-mobile">🖐️</div>
 
     <div id="canvas-container"></div>
 
@@ -134,10 +138,19 @@
         let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
         const velocity = new THREE.Vector3(); const direction = new THREE.Vector3(); let prevTime = performance.now();
         
-        // 增强的移动端检测
+        // 移动端检测
         let isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
         let mobileMove = { x: 0, y: 0 };
         let cameraEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+
+        // --- 性能优化参数 ---
+        // 手机端大幅减少渲染压力
+        const SETTINGS = {
+            rainCount: isMobile ? 4000 : 30000, // 手机雨滴减少到 4000
+            houseCount: isMobile ? 20 : 50,     // 手机房子减少到 20
+            shadowSize: isMobile ? 512 : 2048,  // 手机阴影分辨率降低
+            pixelRatio: isMobile ? 1 : window.devicePixelRatio // 手机不使用视网膜渲染
+        };
 
         // --- 纹理工厂 ---
         const TextureFactory = {
@@ -148,7 +161,8 @@
                 ctx.putImageData(imgData, 0, 0); return canvas;
             },
             createCobblestone: function() {
-                const size = 1024; const canvasColor = document.createElement('canvas'); const canvasNormal = document.createElement('canvas');
+                const size = 512; // 降低纹理尺寸优化加载
+                const canvasColor = document.createElement('canvas'); const canvasNormal = document.createElement('canvas');
                 canvasColor.width = canvasNormal.width = size; canvasColor.height = canvasNormal.height = size;
                 const ctxC = canvasColor.getContext('2d'); const ctxN = canvasNormal.getContext('2d');
                 ctxC.fillStyle = '#1a1510'; ctxC.fillRect(0, 0, size, size); ctxN.fillStyle = '#8080ff'; ctxN.fillRect(0, 0, size, size);
@@ -167,11 +181,11 @@
                 }
                 const noise = this.createNoiseCanvas(size, size, 1, 40); ctxC.globalCompositeOperation = 'multiply'; ctxC.drawImage(noise, 0, 0);
                 const texDiffuse = new THREE.CanvasTexture(canvasColor); const texBump = new THREE.CanvasTexture(canvasNormal); 
-                [texDiffuse, texBump].forEach(t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(60, 60); t.anisotropy = 16; });
+                [texDiffuse, texBump].forEach(t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(60, 60); t.anisotropy = isMobile ? 2 : 16; });
                 return { diffuse: texDiffuse, bump: texBump };
             },
             createWood: function() {
-                const size = 512; const canvas = document.createElement('canvas'); canvas.width = size; canvas.height = size;
+                const size = 256; const canvas = document.createElement('canvas'); canvas.width = size; canvas.height = size;
                 const ctx = canvas.getContext('2d'); ctx.fillStyle = '#2e1d10'; ctx.fillRect(0,0,size,size);
                 ctx.strokeStyle = '#1a0f08'; ctx.lineWidth = 2; ctx.globalAlpha = 0.5;
                 for(let i=0; i<50; i++) { const y = Math.random() * size; ctx.beginPath(); ctx.moveTo(0, y); ctx.bezierCurveTo(size/3, y + Math.random()*20, size*2/3, y - Math.random()*20, size, y); ctx.stroke(); }
@@ -188,8 +202,9 @@
             camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 3000);
             camera.position.set(0, 40, 100);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-            renderer.setSize(window.innerWidth, window.innerHeight); renderer.setPixelRatio(window.devicePixelRatio);
+            renderer = new THREE.WebGLRenderer({ antialias: !isMobile, powerPreference: "high-performance" }); // 手机关闭抗锯齿
+            renderer.setSize(window.innerWidth, window.innerHeight); 
+            renderer.setPixelRatio(SETTINGS.pixelRatio);
             renderer.physicallyCorrectLights = true; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.8; 
             renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             container.appendChild(renderer.domElement);
@@ -199,13 +214,19 @@
             document.getElementById('loading').style.opacity = 0;
 
             createRealisticGround(cobbleMats); createColosseum(); createMedievalCity(woodTex); 
-            createDetails(); createVolumetricClouds(); createBirds(); createRain();
+            if (!isMobile) createDetails(); // 手机端不生成额外的木桶细节，节省性能
+            createVolumetricClouds(); createBirds(); createRain();
 
             const renderScene = new RenderPass(scene, camera);
             const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
             bloomPass.threshold = 0.7; bloomPass.strength = 0.4; bloomPass.radius = 0.5;
-            const filmPass = new FilmPass(0.25, 0.05, 648, false);
-            composer = new EffectComposer(renderer); composer.addPass(renderScene); composer.addPass(bloomPass); composer.addPass(filmPass);
+            
+            // 手机端移除 FilmPass 噪点效果，提升性能
+            composer = new EffectComposer(renderer); composer.addPass(renderScene); composer.addPass(bloomPass);
+            if (!isMobile) {
+                const filmPass = new FilmPass(0.25, 0.05, 648, false);
+                composer.addPass(filmPass);
+            }
 
             orbitControls = new OrbitControls(camera, renderer.domElement);
             orbitControls.enableDamping = true; orbitControls.dampingFactor = 0.05; orbitControls.maxPolarAngle = Math.PI / 2 - 0.05; orbitControls.autoRotate = true; orbitControls.autoRotateSpeed = 0.1;
@@ -216,7 +237,13 @@
 
             window.addEventListener('resize', onWindowResize);
             document.addEventListener('keydown', onKeyDown); document.addEventListener('keyup', onKeyUp);
-            document.getElementById('toggle-view-btn').addEventListener('click', toggleMode);
+            
+            // 修复：按钮点击后失去焦点，防止空格键触发按钮
+            const toggleBtn = document.getElementById('toggle-view-btn');
+            toggleBtn.addEventListener('click', () => {
+                toggleMode();
+                toggleBtn.blur();
+            });
         }
 
         function initRainyEnvironment() {
@@ -228,8 +255,9 @@
             sun.x = Math.cos(phi); sun.y = Math.sin(phi) * Math.sin(theta); sun.z = Math.sin(phi) * Math.cos(theta);
             uniforms['sunPosition'].value.copy(sun);
             const dirLight = new THREE.DirectionalLight(0x8899aa, 1.0); dirLight.position.set(50, 100, 50); dirLight.castShadow = true;
-            dirLight.shadow.mapSize.width = 2048; dirLight.shadow.mapSize.height = 2048; dirLight.shadow.bias = -0.0005;
-            const d = 200; dirLight.shadow.camera.left = -d; dirLight.shadow.camera.right = d; dirLight.shadow.camera.top = d; dirLight.shadow.camera.bottom = -d; scene.add(dirLight);
+            dirLight.shadow.mapSize.width = SETTINGS.shadowSize; dirLight.shadow.mapSize.height = SETTINGS.shadowSize; dirLight.shadow.bias = -0.0005;
+            const d = 100; // 减小阴影范围
+            dirLight.shadow.camera.left = -d; dirLight.shadow.camera.right = d; dirLight.shadow.camera.top = d; dirLight.shadow.camera.bottom = -d; scene.add(dirLight);
             const ambientLight = new THREE.AmbientLight(0x506070, 2.0); scene.add(ambientLight);
         }
         function createRealisticGround(mats) {
@@ -237,7 +265,7 @@
             const geometry = new THREE.PlaneGeometry(2000, 2000); const ground = new THREE.Mesh(geometry, material); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
         }
         function createRain() {
-            const rainCount = 30000; const rainGeo = new THREE.BufferGeometry(); const rainPositions = [];
+            const rainCount = SETTINGS.rainCount; const rainGeo = new THREE.BufferGeometry(); const rainPositions = [];
             for(let i=0; i<rainCount; i++) rainPositions.push((Math.random() - 0.5) * 400, Math.random() * 200, (Math.random() - 0.5) * 400);
             rainGeo.setAttribute('position', new THREE.Float32BufferAttribute(rainPositions, 3));
             const rainMat = new THREE.PointsMaterial({ color: 0xaaaaaa, size: 0.2, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending });
@@ -248,24 +276,26 @@
             const radiusX = 28, radiusZ = 22, heightPerTier = 6, tiers = 3;
             for(let t=0; t<tiers; t++) {
                 const y = t * heightPerTier; const rx = radiusX - t; const rz = radiusZ - t;
-                const shape = new THREE.Shape(); const curveOut = new THREE.EllipseCurve(0,0, rx, rz, 0, 2*Math.PI, false, 0); shape.setFromPoints(curveOut.getPoints(80));
-                const pathIn = new THREE.Path(); const curveIn = new THREE.EllipseCurve(0,0, rx-3, rz-3, 0, 2*Math.PI, true, 0); pathIn.setFromPoints(curveIn.getPoints(80)); shape.holes.push(pathIn);
-                const geo = new THREE.ExtrudeGeometry(shape, { depth: 1.2, bevelEnabled: true, bevelThickness: 0.2, bevelSize: 0.1, bevelSegments: 2 }); geo.rotateX(Math.PI/2);
+                const shape = new THREE.Shape(); const curveOut = new THREE.EllipseCurve(0,0, rx, rz, 0, 2*Math.PI, false, 0); shape.setFromPoints(curveOut.getPoints(64)); // 降低点数
+                const pathIn = new THREE.Path(); const curveIn = new THREE.EllipseCurve(0,0, rx-3, rz-3, 0, 2*Math.PI, true, 0); pathIn.setFromPoints(curveIn.getPoints(64)); shape.holes.push(pathIn);
+                const geo = new THREE.ExtrudeGeometry(shape, { depth: 1.2, bevelEnabled: true, bevelThickness: 0.2, bevelSize: 0.1, bevelSegments: 1 }); // 减少倒角段数
+                geo.rotateX(Math.PI/2);
                 const floor = new THREE.Mesh(geo, stoneMat); floor.position.y = y + heightPerTier; floor.castShadow = true; floor.receiveShadow = true; group.add(floor);
-                const arches = 32; for(let i=0; i<arches; i++) { const angle = (i/arches) * Math.PI * 2; const px = Math.cos(angle) * (rx - 1.5); const pz = Math.sin(angle) * (rz - 1.5); const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.8, heightPerTier, 1.8), stoneMat); pillar.position.set(px, y + heightPerTier/2, pz); pillar.lookAt(0, y + heightPerTier/2, 0); pillar.castShadow = true; pillar.receiveShadow = true; group.add(pillar); }
+                const arches = 24; // 减少拱门数量
+                for(let i=0; i<arches; i++) { const angle = (i/arches) * Math.PI * 2; const px = Math.cos(angle) * (rx - 1.5); const pz = Math.sin(angle) * (rz - 1.5); const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.8, heightPerTier, 1.8), stoneMat); pillar.position.set(px, y + heightPerTier/2, pz); pillar.lookAt(0, y + heightPerTier/2, 0); pillar.castShadow = true; pillar.receiveShadow = true; group.add(pillar); }
             }
             scene.add(group);
         }
         function createMonster(type) {
             const group = new THREE.Group();
-            if (type === 0) { const geo = new THREE.SphereGeometry(0.6, 16, 16); const mat = new THREE.MeshPhysicalMaterial({ color: 0x00ff00, transmission: 0.8, opacity: 1, roughness: 0.1, metalness: 0, thickness: 1, clearcoat: 1.0, emissive: 0x003300 }); const mesh = new THREE.Mesh(geo, mat); mesh.position.y = 0.6; group.add(mesh); const eyeGeo = new THREE.SphereGeometry(0.1, 8, 8); const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 }); const leftEye = new THREE.Mesh(eyeGeo, eyeMat); leftEye.position.set(0.2, 0.8, 0.45); const rightEye = new THREE.Mesh(eyeGeo, eyeMat); rightEye.position.set(-0.2, 0.8, 0.45); group.add(leftEye); group.add(rightEye); group.userData = { type: 'slime', speed: 3 + Math.random() * 2, timeOff: Math.random() * 100 }; } 
-            else if (type === 1) { const geo = new THREE.SphereGeometry(0.4, 16, 16); const mat = new THREE.MeshStandardMaterial({ color: 0xddeeff, transparent: true, opacity: 0.5, roughness: 0.5, emissive: 0x223344 }); const mesh = new THREE.Mesh(geo, mat); mesh.scale.y = 2.5; mesh.position.y = 1.5; group.add(mesh); const eyeGeo = new THREE.SphereGeometry(0.08, 8, 8); const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 }); const leftEye = new THREE.Mesh(eyeGeo, eyeMat); leftEye.position.set(0.15, 1.8, 0.35); const rightEye = new THREE.Mesh(eyeGeo, eyeMat); rightEye.position.set(-0.15, 1.8, 0.35); group.add(leftEye); group.add(rightEye); group.userData = { type: 'ghost', speed: 1 + Math.random(), timeOff: Math.random() * 100 }; } 
+            if (type === 0) { const geo = new THREE.SphereGeometry(0.6, 12, 12); const mat = new THREE.MeshPhysicalMaterial({ color: 0x00ff00, transmission: 0.8, opacity: 1, roughness: 0.1, metalness: 0, thickness: 1, clearcoat: 1.0, emissive: 0x003300 }); const mesh = new THREE.Mesh(geo, mat); mesh.position.y = 0.6; group.add(mesh); const eyeGeo = new THREE.SphereGeometry(0.1, 6, 6); const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 }); const leftEye = new THREE.Mesh(eyeGeo, eyeMat); leftEye.position.set(0.2, 0.8, 0.45); const rightEye = new THREE.Mesh(eyeGeo, eyeMat); rightEye.position.set(-0.2, 0.8, 0.45); group.add(leftEye); group.add(rightEye); group.userData = { type: 'slime', speed: 3 + Math.random() * 2, timeOff: Math.random() * 100 }; } 
+            else if (type === 1) { const geo = new THREE.SphereGeometry(0.4, 12, 12); const mat = new THREE.MeshStandardMaterial({ color: 0xddeeff, transparent: true, opacity: 0.5, roughness: 0.5, emissive: 0x223344 }); const mesh = new THREE.Mesh(geo, mat); mesh.scale.y = 2.5; mesh.position.y = 1.5; group.add(mesh); const eyeGeo = new THREE.SphereGeometry(0.08, 6, 6); const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 }); const leftEye = new THREE.Mesh(eyeGeo, eyeMat); leftEye.position.set(0.15, 1.8, 0.35); const rightEye = new THREE.Mesh(eyeGeo, eyeMat); rightEye.position.set(-0.15, 1.8, 0.35); group.add(leftEye); group.add(rightEye); group.userData = { type: 'ghost', speed: 1 + Math.random(), timeOff: Math.random() * 100 }; } 
             else { const geo = new THREE.IcosahedronGeometry(0.5, 0); const mat = new THREE.MeshStandardMaterial({ color: 0x4b0082, emissive: 0x220044, roughness: 0.2, flatShading: true }); const mesh = new THREE.Mesh(geo, mat); mesh.position.y = 1.2; group.add(mesh); const partGeo = new THREE.BoxGeometry(0.1, 0.1, 0.1); const partMat = new THREE.MeshBasicMaterial({color: 0x9900ff}); for(let i=0; i<4; i++) { const part = new THREE.Mesh(partGeo, partMat); part.position.x = 0.8; const piv = new THREE.Group(); piv.position.y = 1.2; piv.rotation.y = i * (Math.PI/2); piv.add(part); piv.userData = { isOrbiter: true, speed: (i+1) * 2 }; group.add(piv); } group.userData = { type: 'orb', speed: 1, timeOff: Math.random() * 100 }; }
             return group;
         }
         function createMedievalCity(woodTex) {
             const plasterMat = new THREE.MeshStandardMaterial({ color: 0xaaa8a0, roughness: 0.7 }); const woodMat = new THREE.MeshStandardMaterial({ map: woodTex, color: 0x3d2817, roughness: 0.6 }); const roofMat = new THREE.MeshStandardMaterial({ color: 0x6d4c41, roughness: 0.5 }); const doorMat = new THREE.MeshStandardMaterial({ color: 0x2a1a0e, roughness: 0.8, bumpMap: woodTex, bumpScale: 0.1 });
-            for(let i=0; i<50; i++) {
+            for(let i=0; i<SETTINGS.houseCount; i++) {
                 const angle = Math.random() * Math.PI * 2; const dist = 50 + Math.random() * 150; const x = Math.cos(angle) * dist; const z = Math.sin(angle) * dist; const house = new THREE.Group(); house.position.set(x, 0, z); const rotY = Math.atan2(-x, -z) + (Math.random()-0.5); house.rotation.y = rotY;
                 const w = 5 + Math.random() * 2; const d = 5 + Math.random() * 2; const groundH = 4; const upperH = 3.5; const wallThick = 0.2; const doorW = 1.4; const doorH = 2.4;
                 const backWall = new THREE.Mesh(new THREE.BoxGeometry(w, groundH, wallThick), plasterMat); backWall.position.set(0, groundH/2, -d/2 + wallThick/2); backWall.castShadow = true; backWall.receiveShadow = true; house.add(backWall);
@@ -309,11 +339,8 @@
                 if (!isMobile) {
                     fpsControls.lock();
                 } else {
-                    if (!isFpsMode) {
-                        toggleMode();
-                    } else {
-                        blocker.style.display = 'none';
-                    }
+                    if (!isFpsMode) toggleMode();
+                    else blocker.style.display = 'none';
                 }
             });
 
@@ -365,8 +392,8 @@
             touchRight.addEventListener('touchmove', (e) => { e.preventDefault(); const touch = e.changedTouches[0]; const dx = touch.clientX - lastX; const dy = touch.clientY - lastY; lastX = touch.clientX; lastY = touch.clientY; if (isFpsMode) { const sensitivity = 0.005; cameraEuler.setFromQuaternion(camera.quaternion); cameraEuler.y -= dx * sensitivity; cameraEuler.x -= dy * sensitivity; cameraEuler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, cameraEuler.x)); camera.quaternion.setFromEuler(cameraEuler); } }, {passive: false});
 
             const btn = document.getElementById('mobile-interact-btn');
-            btn.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); interact(); btn.style.transform = "scale(0.9)"; });
-            btn.addEventListener('touchend', () => { btn.style.transform = "scale(1)"; });
+            btn.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); interact(); btn.style.transform = "scale(0.9)"; btn.style.backgroundColor = "rgba(255,255,255,0.5)"; });
+            btn.addEventListener('touchend', () => { btn.style.transform = "scale(1)"; btn.style.backgroundColor = "rgba(255,255,255,0.2)"; });
         }
 
         function interact() {
@@ -379,7 +406,7 @@
             const crosshair = document.getElementById('crosshair');
             
             if (isFpsMode) {
-                camera.position.set(0, 1.7, 90); // 确保在地面
+                camera.position.set(0, 1.7, 90); 
                 orbitControls.enabled = false;
                 
                 if (!isMobile) {
@@ -398,13 +425,17 @@
             }
         }
 
+        // 修复：空格键逻辑
         function onKeyDown(e) {
             switch (e.code) {
                 case 'ArrowUp': case 'KeyW': moveForward = true; break;
                 case 'ArrowLeft': case 'KeyA': moveLeft = true; break;
                 case 'ArrowDown': case 'KeyS': moveBackward = true; break;
                 case 'ArrowRight': case 'KeyD': moveRight = true; break;
-                case 'Space': if (isFpsMode && camera.position.y <= 1.8) velocity.y = 10; break;
+                case 'Space': 
+                    e.preventDefault(); // 阻止默认滚动/点击行为
+                    if (isFpsMode && camera.position.y <= 1.8) velocity.y = 10; 
+                    break;
                 case 'KeyE': interact(); break;
             }
         }
@@ -443,10 +474,11 @@
                 const tip = document.getElementById('interact-tip');
                 if (hoveredDoor) {
                     tip.style.display = 'block'; tip.innerText = hoveredDoor.userData.isOpen ? "按 [E] 关门" : "按 [E] 开门";
-                    if (isMobile) document.getElementById('mobile-interact-btn').style.background = "rgba(0, 255, 0, 0.6)";
+                    // 手掌图标变亮
+                    if (isMobile) document.getElementById('mobile-interact-btn').style.borderColor = "#00ff00";
                 } else {
                     tip.style.display = 'none';
-                    if (isMobile) document.getElementById('mobile-interact-btn').style.background = "rgba(255, 170, 0, 0.6)";
+                    if (isMobile) document.getElementById('mobile-interact-btn').style.borderColor = "rgba(255,255,255,0.3)";
                 }
             }
 
