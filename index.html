@@ -8,7 +8,6 @@
         body { margin: 0; overflow: hidden; background-color: #0f1215; font-family: "PingFang SC", "Microsoft YaHei", sans-serif; touch-action: none; }
         #canvas-container { width: 100vw; height: 100vh; display: block; }
         
-        /* UI 设计 */
         #ui-layer {
             position: absolute; top: 20px; left: 20px; color: #e0e0e0; pointer-events: none; user-select: none; z-index: 5;
             border-left: 3px solid #d32f2f; padding-left: 15px; text-shadow: 0 2px 4px rgba(0,0,0,0.9);
@@ -55,30 +54,38 @@
             z-index: 20; transition: opacity 0.5s;
         }
 
-        /* 手机控件优化 */
+        /* 手机控件区域 */
         #mobile-controls {
-            position: absolute; bottom: 20px; width: 100%; height: 150px; display: none; z-index: 20; pointer-events: none;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; z-index: 20; pointer-events: none;
         }
-        .joystick-area {
-            position: absolute; bottom: 20px; width: 120px; height: 120px;
-            background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 50%; pointer-events: auto;
+        /* 左摇杆区域：左半屏下半部分 */
+        #stick-container {
+            position: absolute; bottom: 20px; left: 20px; width: 150px; height: 150px;
+            pointer-events: auto; /* 允许点击 */
         }
-        #stick-left { left: 30px; }
-        #touch-right { right: 30px; border: none; background: rgba(0,0,0,0.05); }
-        
+        .joystick-base {
+            position: absolute; top: 50%; left: 50%; width: 120px; height: 120px;
+            background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%; transform: translate(-50%, -50%);
+        }
         .stick-knob {
             position: absolute; top: 50%; left: 50%; width: 50px; height: 50px;
-            background: rgba(255, 255, 255, 0.3); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none;
+            background: rgba(255, 255, 255, 0.5); border-radius: 50%;
+            transform: translate(-50%, -50%);
         }
         
-        /* 优化后的交互按钮：使用手掌图标，颜色更温和 */
+        /* 右侧触控区域：整个右半屏 */
+        #touch-zone-right {
+            position: absolute; top: 0; right: 0; width: 50%; height: 100%;
+            pointer-events: auto; touch-action: none;
+        }
+
         .interact-btn-mobile {
-            position: absolute; bottom: 160px; right: 40px; width: 64px; height: 64px; border-radius: 50%;
-            background: rgba(255, 255, 255, 0.2); border: 2px solid rgba(255, 255, 255, 0.3);
-            color: white; font-size: 30px;
-            display: none; justify-content: center; align-items: center; pointer-events: auto; z-index: 21;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+            position: absolute; bottom: 140px; right: 40px; width: 70px; height: 70px; border-radius: 50%;
+            background: rgba(255, 255, 255, 0.15); border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white; font-size: 32px;
+            display: none; justify-content: center; align-items: center; pointer-events: auto; z-index: 22;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
             transition: background 0.3s, transform 0.1s;
         }
     </style>
@@ -109,11 +116,18 @@
         <div id="instructions">点击屏幕继续</div>
     </div>
 
+    <!-- 修复后的手机控件结构 -->
     <div id="mobile-controls">
-        <div id="stick-left" class="joystick-area"><div class="stick-knob" id="knob-left"></div></div>
-        <div id="touch-right" class="joystick-area" style="width: 40%; height: 60%; bottom: 20%; right: 0; border-radius: 0;"></div>
+        <!-- 左摇杆容器 -->
+        <div id="stick-container">
+            <div class="joystick-base">
+                <div class="stick-knob" id="knob-left"></div>
+            </div>
+        </div>
+        <!-- 右侧全屏触控区 -->
+        <div id="touch-zone-right"></div>
     </div>
-    <!-- 改为手掌图标 -->
+    
     <div id="mobile-interact-btn" class="interact-btn-mobile">🖐️</div>
 
     <div id="canvas-container"></div>
@@ -128,7 +142,6 @@
         import { UnrealBloomPass } from 'https://cdn.skypack.dev/three@0.132.2/examples/jsm/postprocessing/UnrealBloomPass.js';
         import { FilmPass } from 'https://cdn.skypack.dev/three@0.132.2/examples/jsm/postprocessing/FilmPass.js';
 
-        // --- 变量定义 ---
         let camera, scene, renderer, composer;
         let orbitControls, fpsControls;
         let sun, sky;
@@ -138,21 +151,17 @@
         let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
         const velocity = new THREE.Vector3(); const direction = new THREE.Vector3(); let prevTime = performance.now();
         
-        // 移动端检测
         let isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
         let mobileMove = { x: 0, y: 0 };
         let cameraEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 
-        // --- 性能优化参数 ---
-        // 手机端大幅减少渲染压力
         const SETTINGS = {
-            rainCount: isMobile ? 4000 : 30000, // 手机雨滴减少到 4000
-            houseCount: isMobile ? 20 : 50,     // 手机房子减少到 20
-            shadowSize: isMobile ? 512 : 2048,  // 手机阴影分辨率降低
-            pixelRatio: isMobile ? 1 : window.devicePixelRatio // 手机不使用视网膜渲染
+            rainCount: isMobile ? 4000 : 30000,
+            houseCount: isMobile ? 20 : 50,
+            shadowSize: isMobile ? 512 : 2048,
+            pixelRatio: isMobile ? 1 : window.devicePixelRatio
         };
 
-        // --- 纹理工厂 ---
         const TextureFactory = {
             createNoiseCanvas: function(width, height, scale = 1.0, intensity = 255) {
                 const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
@@ -161,8 +170,7 @@
                 ctx.putImageData(imgData, 0, 0); return canvas;
             },
             createCobblestone: function() {
-                const size = 512; // 降低纹理尺寸优化加载
-                const canvasColor = document.createElement('canvas'); const canvasNormal = document.createElement('canvas');
+                const size = 512; const canvasColor = document.createElement('canvas'); const canvasNormal = document.createElement('canvas');
                 canvasColor.width = canvasNormal.width = size; canvasColor.height = canvasNormal.height = size;
                 const ctxC = canvasColor.getContext('2d'); const ctxN = canvasNormal.getContext('2d');
                 ctxC.fillStyle = '#1a1510'; ctxC.fillRect(0, 0, size, size); ctxN.fillStyle = '#8080ff'; ctxN.fillRect(0, 0, size, size);
@@ -202,7 +210,7 @@
             camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 3000);
             camera.position.set(0, 40, 100);
 
-            renderer = new THREE.WebGLRenderer({ antialias: !isMobile, powerPreference: "high-performance" }); // 手机关闭抗锯齿
+            renderer = new THREE.WebGLRenderer({ antialias: !isMobile, powerPreference: "high-performance" }); 
             renderer.setSize(window.innerWidth, window.innerHeight); 
             renderer.setPixelRatio(SETTINGS.pixelRatio);
             renderer.physicallyCorrectLights = true; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.8; 
@@ -214,14 +222,12 @@
             document.getElementById('loading').style.opacity = 0;
 
             createRealisticGround(cobbleMats); createColosseum(); createMedievalCity(woodTex); 
-            if (!isMobile) createDetails(); // 手机端不生成额外的木桶细节，节省性能
+            if (!isMobile) createDetails(); 
             createVolumetricClouds(); createBirds(); createRain();
 
             const renderScene = new RenderPass(scene, camera);
             const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
             bloomPass.threshold = 0.7; bloomPass.strength = 0.4; bloomPass.radius = 0.5;
-            
-            // 手机端移除 FilmPass 噪点效果，提升性能
             composer = new EffectComposer(renderer); composer.addPass(renderScene); composer.addPass(bloomPass);
             if (!isMobile) {
                 const filmPass = new FilmPass(0.25, 0.05, 648, false);
@@ -238,7 +244,6 @@
             window.addEventListener('resize', onWindowResize);
             document.addEventListener('keydown', onKeyDown); document.addEventListener('keyup', onKeyUp);
             
-            // 修复：按钮点击后失去焦点，防止空格键触发按钮
             const toggleBtn = document.getElementById('toggle-view-btn');
             toggleBtn.addEventListener('click', () => {
                 toggleMode();
@@ -246,6 +251,7 @@
             });
         }
 
+        // ... 环境生成代码保持不变 (省略以节省篇幅，保持之前逻辑) ...
         function initRainyEnvironment() {
             sky = new Sky(); sky.scale.setScalar(450000); scene.add(sky);
             sun = new THREE.Vector3();
@@ -256,8 +262,7 @@
             uniforms['sunPosition'].value.copy(sun);
             const dirLight = new THREE.DirectionalLight(0x8899aa, 1.0); dirLight.position.set(50, 100, 50); dirLight.castShadow = true;
             dirLight.shadow.mapSize.width = SETTINGS.shadowSize; dirLight.shadow.mapSize.height = SETTINGS.shadowSize; dirLight.shadow.bias = -0.0005;
-            const d = 100; // 减小阴影范围
-            dirLight.shadow.camera.left = -d; dirLight.shadow.camera.right = d; dirLight.shadow.camera.top = d; dirLight.shadow.camera.bottom = -d; scene.add(dirLight);
+            const d = 100; dirLight.shadow.camera.left = -d; dirLight.shadow.camera.right = d; dirLight.shadow.camera.top = d; dirLight.shadow.camera.bottom = -d; scene.add(dirLight);
             const ambientLight = new THREE.AmbientLight(0x506070, 2.0); scene.add(ambientLight);
         }
         function createRealisticGround(mats) {
@@ -276,12 +281,12 @@
             const radiusX = 28, radiusZ = 22, heightPerTier = 6, tiers = 3;
             for(let t=0; t<tiers; t++) {
                 const y = t * heightPerTier; const rx = radiusX - t; const rz = radiusZ - t;
-                const shape = new THREE.Shape(); const curveOut = new THREE.EllipseCurve(0,0, rx, rz, 0, 2*Math.PI, false, 0); shape.setFromPoints(curveOut.getPoints(64)); // 降低点数
+                const shape = new THREE.Shape(); const curveOut = new THREE.EllipseCurve(0,0, rx, rz, 0, 2*Math.PI, false, 0); shape.setFromPoints(curveOut.getPoints(64)); 
                 const pathIn = new THREE.Path(); const curveIn = new THREE.EllipseCurve(0,0, rx-3, rz-3, 0, 2*Math.PI, true, 0); pathIn.setFromPoints(curveIn.getPoints(64)); shape.holes.push(pathIn);
-                const geo = new THREE.ExtrudeGeometry(shape, { depth: 1.2, bevelEnabled: true, bevelThickness: 0.2, bevelSize: 0.1, bevelSegments: 1 }); // 减少倒角段数
+                const geo = new THREE.ExtrudeGeometry(shape, { depth: 1.2, bevelEnabled: true, bevelThickness: 0.2, bevelSize: 0.1, bevelSegments: 1 }); 
                 geo.rotateX(Math.PI/2);
                 const floor = new THREE.Mesh(geo, stoneMat); floor.position.y = y + heightPerTier; floor.castShadow = true; floor.receiveShadow = true; group.add(floor);
-                const arches = 24; // 减少拱门数量
+                const arches = 24; 
                 for(let i=0; i<arches; i++) { const angle = (i/arches) * Math.PI * 2; const px = Math.cos(angle) * (rx - 1.5); const pz = Math.sin(angle) * (rz - 1.5); const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.8, heightPerTier, 1.8), stoneMat); pillar.position.set(px, y + heightPerTier/2, pz); pillar.lookAt(0, y + heightPerTier/2, 0); pillar.castShadow = true; pillar.receiveShadow = true; group.add(pillar); }
             }
             scene.add(group);
@@ -359,6 +364,7 @@
             });
         }
 
+        // --- 手机端控制逻辑修复 ---
         function setupMobileControls() {
             if (!isMobile) return;
             document.getElementById('mobile-controls').style.display = 'block';
@@ -367,30 +373,108 @@
             const instructions = document.getElementById('instructions');
             instructions.innerHTML = "轻触屏幕开始";
             
-            const stickLeft = document.getElementById('stick-left');
+            // 左摇杆 (移动)
+            const stickContainer = document.getElementById('stick-container');
             const knobLeft = document.getElementById('knob-left');
-            let touchIdLeft = null; const maxDist = 35;
+            let touchIdLeft = null; const maxDist = 40;
+            let startX = 0, startY = 0;
 
-            stickLeft.addEventListener('touchstart', (e) => { e.preventDefault(); const touch = e.changedTouches[0]; touchIdLeft = touch.identifier; updateStick(touch); }, {passive: false});
-            stickLeft.addEventListener('touchmove', (e) => { e.preventDefault(); for (let i = 0; i < e.changedTouches.length; i++) { if (e.changedTouches[i].identifier === touchIdLeft) { updateStick(e.changedTouches[i]); break; } } }, {passive: false});
-            const endStick = (e) => { e.preventDefault(); for (let i = 0; i < e.changedTouches.length; i++) { if (e.changedTouches[i].identifier === touchIdLeft) { touchIdLeft = null; knobLeft.style.transform = `translate(-50%, -50%)`; mobileMove.x = 0; mobileMove.y = 0; } } };
-            stickLeft.addEventListener('touchend', endStick); stickLeft.addEventListener('touchcancel', endStick);
+            // 使用 stick-container 监听，范围更大
+            stickContainer.addEventListener('touchstart', (e) => { 
+                e.preventDefault(); 
+                const touch = e.changedTouches[0]; 
+                touchIdLeft = touch.identifier; 
+                const rect = stickContainer.getBoundingClientRect();
+                startX = rect.left + rect.width/2;
+                startY = rect.top + rect.height/2;
+                updateStick(touch); 
+            }, {passive: false});
+
+            stickContainer.addEventListener('touchmove', (e) => { 
+                e.preventDefault(); 
+                for (let i = 0; i < e.changedTouches.length; i++) { 
+                    if (e.changedTouches[i].identifier === touchIdLeft) { 
+                        updateStick(e.changedTouches[i]); 
+                        break; 
+                    } 
+                } 
+            }, {passive: false});
+
+            const endStick = (e) => { 
+                e.preventDefault(); 
+                for (let i = 0; i < e.changedTouches.length; i++) { 
+                    if (e.changedTouches[i].identifier === touchIdLeft) { 
+                        touchIdLeft = null; 
+                        knobLeft.style.transform = `translate(-50%, -50%)`; 
+                        mobileMove.x = 0; mobileMove.y = 0; 
+                    } 
+                } 
+            };
+            stickContainer.addEventListener('touchend', endStick); 
+            stickContainer.addEventListener('touchcancel', endStick);
 
             function updateStick(touch) {
-                const rect = stickLeft.getBoundingClientRect();
-                const centerX = rect.left + rect.width / 2; const centerY = rect.top + rect.height / 2;
-                let dx = touch.clientX - centerX; let dy = touch.clientY - centerY;
+                let dx = touch.clientX - startX; 
+                let dy = touch.clientY - startY;
                 const dist = Math.sqrt(dx*dx + dy*dy);
                 if (dist > maxDist) { dx = (dx / dist) * maxDist; dy = (dy / dist) * maxDist; }
                 knobLeft.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-                mobileMove.x = dx / maxDist; mobileMove.y = dy / maxDist;
+                // 修复：Y轴反转，上推(负dy)为前进(负Z)
+                mobileMove.x = dx / maxDist; 
+                mobileMove.y = dy / maxDist; 
             }
 
-            const touchRight = document.getElementById('touch-right');
-            let lastX = 0, lastY = 0;
-            touchRight.addEventListener('touchstart', (e) => { e.preventDefault(); lastX = e.changedTouches[0].clientX; lastY = e.changedTouches[0].clientY; }, {passive: false});
-            touchRight.addEventListener('touchmove', (e) => { e.preventDefault(); const touch = e.changedTouches[0]; const dx = touch.clientX - lastX; const dy = touch.clientY - lastY; lastX = touch.clientX; lastY = touch.clientY; if (isFpsMode) { const sensitivity = 0.005; cameraEuler.setFromQuaternion(camera.quaternion); cameraEuler.y -= dx * sensitivity; cameraEuler.x -= dy * sensitivity; cameraEuler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, cameraEuler.x)); camera.quaternion.setFromEuler(cameraEuler); } }, {passive: false});
+            // 右侧触控 (视角) - 独立追踪 ID
+            const touchRight = document.getElementById('touch-zone-right');
+            let touchIdRight = null;
+            let lastTouchX = 0, lastTouchY = 0;
+            
+            touchRight.addEventListener('touchstart', (e) => { 
+                e.preventDefault(); 
+                // 如果已经有手指在旋转，忽略新的
+                if (touchIdRight !== null) return;
+                
+                const touch = e.changedTouches[0];
+                touchIdRight = touch.identifier;
+                lastTouchX = touch.clientX; 
+                lastTouchY = touch.clientY; 
+            }, {passive: false});
 
+            touchRight.addEventListener('touchmove', (e) => { 
+                e.preventDefault(); 
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    if (e.changedTouches[i].identifier === touchIdRight) {
+                        const touch = e.changedTouches[i];
+                        const dx = touch.clientX - lastTouchX;
+                        const dy = touch.clientY - lastTouchY;
+                        lastTouchX = touch.clientX;
+                        lastTouchY = touch.clientY;
+
+                        if (isFpsMode) { 
+                            const sensitivity = 0.005; 
+                            cameraEuler.setFromQuaternion(camera.quaternion); 
+                            cameraEuler.y -= dx * sensitivity; 
+                            cameraEuler.x -= dy * sensitivity; 
+                            cameraEuler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, cameraEuler.x)); 
+                            camera.quaternion.setFromEuler(cameraEuler); 
+                        }
+                        break;
+                    }
+                }
+            }, {passive: false});
+
+            const endLook = (e) => {
+                e.preventDefault();
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    if (e.changedTouches[i].identifier === touchIdRight) {
+                        touchIdRight = null;
+                    }
+                }
+            };
+            touchRight.addEventListener('touchend', endLook);
+            touchRight.addEventListener('touchcancel', endLook);
+
+            // 交互按钮
             const btn = document.getElementById('mobile-interact-btn');
             btn.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); interact(); btn.style.transform = "scale(0.9)"; btn.style.backgroundColor = "rgba(255,255,255,0.5)"; });
             btn.addEventListener('touchend', () => { btn.style.transform = "scale(1)"; btn.style.backgroundColor = "rgba(255,255,255,0.2)"; });
@@ -474,7 +558,6 @@
                 const tip = document.getElementById('interact-tip');
                 if (hoveredDoor) {
                     tip.style.display = 'block'; tip.innerText = hoveredDoor.userData.isOpen ? "按 [E] 关门" : "按 [E] 开门";
-                    // 手掌图标变亮
                     if (isMobile) document.getElementById('mobile-interact-btn').style.borderColor = "#00ff00";
                 } else {
                     tip.style.display = 'none';
